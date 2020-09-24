@@ -38,9 +38,14 @@ target_link_libraries(giovanni_simulator ${catkin_LIBRARIES})
 install(TARGETS giovanni_simulator
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
-add_executable(robot_control src/giovanni/robot_control_amcl.cc)
+add_executable(robot_control src/giovanni/robot_control.cc)
 target_link_libraries(robot_control ${catkin_LIBRARIES})
 install(TARGETS robot_control
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+add_executable(robot_control_amcl src/giovanni/robot_control_amcl.cc)
+target_link_libraries(robot_control_amcl ${catkin_LIBRARIES})
+install(TARGETS robot_control_amcl
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 

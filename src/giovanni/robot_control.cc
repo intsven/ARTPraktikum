@@ -129,7 +129,7 @@ int main(int argc, char **argv)
 
   
   CGioController *gio_control = new CGioController(); // object and also init function
-  if (!gio_control->getPathFromFile("acht.dat"))
+  if (!gio_control->getPathFromFile("amcl_mod.dat"))
     cout<<"ERROR: Can not open GioPath File\n";
   else
     drive_a_path = 1;
@@ -138,7 +138,7 @@ int main(int argc, char **argv)
   gio_control->setAxisLength(0.485);
 
   // debugging
-  giofile.open("pos_acht4.dat");
+  giofile.open("pos_odom.dat");
 
   int count = 0;
 
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
     cout.flush();
     giofile.flush();
 		
-		double motor_scale = -30;
+		double motor_scale = -20;
 
 		volksbot::vels velocity;
 		velocity.left = leftspeed * motor_scale;

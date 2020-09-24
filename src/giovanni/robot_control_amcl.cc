@@ -32,6 +32,8 @@ double gio_vright = 0.0;
 int    drive_a_path = 0;
 
 double x = 0, y = 0, theta = 0; //-1.51;
+double x_start = 0, y_start = 0, theta_start = 0;
+bool start_set = false;
 
 
 /*----------------------------------------------------------------*/
@@ -108,6 +110,13 @@ void amclCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 	y = msg->pose.pose.position.y;
 
 	theta = tf::getYaw(msg->pose.pose.orientation);
+
+  if(!start_set) {
+    start_set = true;
+    x_start = x;
+    y_start = y;
+    theta_start = theta;
+  }
 }
 
 
@@ -141,7 +150,7 @@ int main(int argc, char **argv)
 
   
   CGioController *gio_control = new CGioController(); // object and also init function
-  if (!gio_control->getPathFromFile("acht.dat"))
+  if (!gio_control->getPathFromFile("amcl_modified.dat"))
     cout<<"ERROR: Can not open GioPath File\n";
   else
     drive_a_path = 1;
@@ -157,7 +166,7 @@ int main(int argc, char **argv)
   //loop
   while  (drive_a_path && ros::ok()) {
     //    gio_control->setPose(x * 0.001, y_from_encoder*0.001,theta_from_encoder);
-    gio_control->setPose(x, y, theta);
+    gio_control->setPose(x - x_start, y - y_start, theta - theta_start);
     // get trajectory
     if (gio_control->getNextState(gio_u, gio_omega, leftspeed, rightspeed, 0)==0) {
 	     cout<<"finish";
