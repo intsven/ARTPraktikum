@@ -32,67 +32,12 @@ int    drive_a_path = 0;
 
 double x = 0, y = 0, theta = 0; //-1.51;
 
-
-/*----------------------------------------------------------------*/
-/*   Geschwindigkeiten und Positionsaenderungen berechnen         */
-/*----------------------------------------------------------------*/
-int PredictRobotBehaviour(double leftspeed, double rightspeed, 
-                          double betaCoorTrans, double elapsed_time, 
-                          double *dbeta, double *backDX, double *backDY)
+void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  double epsilon = 0.000001;
-  double rad_abstand = 280.0 / 1000.0;
-  double radius, alpha = 0.0, dx, dy;
-
-  if (fabs(leftspeed - rightspeed) < epsilon) {
-    if (fabs(leftspeed) < epsilon) {
-	 radius = 0.0;
-	 dx = 0.0;
-	 dy = 0.0;
-    }
-    else {
-	 dx = 0.0;
-	 dy = elapsed_time * (leftspeed + rightspeed) * 0.5;
-    }
-  }
-  else {
-    radius = rad_abstand * 0.5 * (leftspeed + rightspeed) /
-	 (rightspeed - leftspeed);
-
-    alpha = elapsed_time * (rightspeed - leftspeed) / rad_abstand;
-    dx =  radius * (cos(alpha) - 1.0);
-    dy =  radius * sin(alpha);
-  }
-
-  *dbeta = alpha;
-    
-  /* Koordinaten transformation */
-  *backDX = (dx * cos(betaCoorTrans)) + (dy * sin(betaCoorTrans));
-  *backDY = (-dx * sin(betaCoorTrans)) + (dy * cos(betaCoorTrans));
-
-  return(0);
-} 
-
-void chatterCallback2(const nav_msgs::Odometry::ConstPtr& msg)
-{
-  //ROS_INFO("Seq: [%d]", msg->header.seq);
-  //ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", msg->pose.pose.position.x,msg->pose.pose.position.y, msg->pose.pose.position.z);
-
   x = msg->pose.pose.position.x;
 	y = msg->pose.pose.position.y;
 
-	tf::Quaternion quater;
-	tf::quaternionMsgToTF(msg->pose.pose.orientation, quater);
-	double roll, pitch, yaw;
-	tf::Matrix3x3(quater).getRPY(roll, pitch, yaw);
-/*
-	if(yaw > 2 * M_PI) {
-		yaw -= 2 * M_PI;
-	}
-	if(yaw < 0 ) {
-		yaw += 2* M_PI;
-	}*/
-	theta = tf::getYaw(msg->pose.pose.orientation);// + 3.1415;
+	theta = tf::getYaw(msg->pose.pose.orientation);
 	
 	//x = (x * cos(theta)) + (y * sin(theta));
   //y = (-x * sin(theta)) + (y * cos(theta));
@@ -102,14 +47,8 @@ void chatterCallback2(const nav_msgs::Odometry::ConstPtr& msg)
 
 int main(int argc, char **argv)
 {
-  /* #####################
-   *  Prediction of robot
-   * #################### */
   double leftspeed, rightspeed, v_diff;
-  double dx = 0.0, dy = 0.0, dbeta;
   double scale_factor;
-  double elapsed_time = 0.01; // 10 ms
-  double epsilon = 0.01;
 
 
   double u, omega;
@@ -118,18 +57,14 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "robot_control");
 	ros::NodeHandle n;
 
-	ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
 	ros::Publisher vels_pub = n.advertise<volksbot::vels>("Vel", 100);
-	//ros::Publisher vels_pub = n.advertise<volksbot::vels>("Vel", 100);
-	ros::Subscriber sub = n.subscribe("odom", 10, chatterCallback2);
-
-	ros::Time current_time;
+	ros::Subscriber sub = n.subscribe("odom", 10, odomCallback);
 
   ros::Rate loop_rate(5);
 
   
   CGioController *gio_control = new CGioController(); // object and also init function
-  if (!gio_control->getPathFromFile("amcl_mod.dat"))
+  if (!gio_control->getPathFromFile("path.dat"))
     cout<<"ERROR: Can not open GioPath File\n";
   else
     drive_a_path = 1;
@@ -151,48 +86,21 @@ int main(int argc, char **argv)
 	     cout<<"finish";
 	     drive_a_path = 0;
     }
-    
-    // v_diff = gio_omega * gio_u / M_PI;
-    //leftspeed = (float) (gio_u + gio_omega * (280.0 / 1000.0) * 0.5); // - fabs(v_diff) - v_diff); 
-    //rightspeed = (float) (gio_u - gio_omega * (280.0 / 1000.0) * 0.5); // fabs(v_diff) + v_diff); 
 
     scale_factor = 1.0;
     if (fabs(leftspeed) > u_max) scale_factor = fabs(u_max / leftspeed);
     if (fabs(rightspeed) > u_max) scale_factor = fabs(u_max / rightspeed);
     leftspeed *= scale_factor;
     rightspeed *= scale_factor;
-
-
-    
-    // SET SPEED HERE =====================================
-    /*
-    set_wheel_speed2(v_l_soll, v_r_soll,
-				 v_l_ist, v_r_ist,
-				 omega, Get_mtime_diff(9), AntiWindup);
-    */
-    
-    /* ######################################
-	*  Implementation of the robot simulator
-	* ###################################### */
-    //PredictRobotBehaviour(leftspeed, rightspeed, theta, elapsed_time, &dbeta, &dx, &dy);  
-    //x += dx;
-    //y += dy;
-    //theta += dbeta;
-    //gio_control->getRoboterPose(leftspeed, rightspeed, x, y, theta);
   
     giofile << gio_u << " " << gio_omega << " "
 		  << x << " " << y << " " << theta << " "
 		  << leftspeed << " " << rightspeed << endl;
-    /*
-    cout    << gio_u << " " << gio_omega << " "
-		  << x << " " << y << " " << theta << " "
-		  << leftspeed << " " << rightspeed << endl;
-    */
+
     cout.flush();
     giofile.flush();
 		
 		double motor_scale = -20;
-
 		volksbot::vels velocity;
 		velocity.left = leftspeed * motor_scale;
 		velocity.right = rightspeed * motor_scale;

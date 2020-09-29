@@ -20,6 +20,7 @@ using std::min;
 #include "tf/transform_datatypes.h"
 #include <tf/LinearMath/Matrix3x3.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include <tf/transform_listener.h>
 
 #include <sstream>
 
@@ -31,105 +32,51 @@ double gio_vleft = 0.0;
 double gio_vright = 0.0;
 int    drive_a_path = 0;
 
+double x_mess = 0, y_mess = 0, theta_mess = 0;
 double x = 0, y = 0, theta = 0; //-1.51;
 double x_start = 0, y_start = 0, theta_start = 0;
-bool start_set = false;
+int start_counter = 0;
 
-
-/*----------------------------------------------------------------*/
-/*   Geschwindigkeiten und Positionsaenderungen berechnen         */
-/*----------------------------------------------------------------*/
-int PredictRobotBehaviour(double leftspeed, double rightspeed, 
-                          double betaCoorTrans, double elapsed_time, 
-                          double *dbeta, double *backDX, double *backDY)
-{
-  double epsilon = 0.000001;
-  double rad_abstand = 280.0 / 1000.0;
-  double radius, alpha = 0.0, dx, dy;
-
-  if (fabs(leftspeed - rightspeed) < epsilon) {
-    if (fabs(leftspeed) < epsilon) {
-	 radius = 0.0;
-	 dx = 0.0;
-	 dy = 0.0;
-    }
-    else {
-	 dx = 0.0;
-	 dy = elapsed_time * (leftspeed + rightspeed) * 0.5;
-    }
-  }
-  else {
-    radius = rad_abstand * 0.5 * (leftspeed + rightspeed) /
-	 (rightspeed - leftspeed);
-
-    alpha = elapsed_time * (rightspeed - leftspeed) / rad_abstand;
-    dx =  radius * (cos(alpha) - 1.0);
-    dy =  radius * sin(alpha);
-  }
-
-  *dbeta = alpha;
-    
-  /* Koordinaten transformation */
-  *backDX = (dx * cos(betaCoorTrans)) + (dy * sin(betaCoorTrans));
-  *backDY = (-dx * sin(betaCoorTrans)) + (dy * cos(betaCoorTrans));
-
-  return(0);
-} 
-
-void chatterCallback2(const nav_msgs::Odometry::ConstPtr& msg)
-{
-  //ROS_INFO("Seq: [%d]", msg->header.seq);
-  //ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", msg->pose.pose.position.x,msg->pose.pose.position.y, msg->pose.pose.position.z);
-
-  x = msg->pose.pose.position.x;
-	y = msg->pose.pose.position.y;
-
-	tf::Quaternion quater;
-	tf::quaternionMsgToTF(msg->pose.pose.orientation, quater);
-	double roll, pitch, yaw;
-	tf::Matrix3x3(quater).getRPY(roll, pitch, yaw);
-/*
-	if(yaw > 2 * M_PI) {
-		yaw -= 2 * M_PI;
-	}
-	if(yaw < 0 ) {
-		yaw += 2* M_PI;
-	}*/
-	theta = tf::getYaw(msg->pose.pose.orientation);// + 3.1415;
-	
-	//x = (x * cos(theta)) + (y * sin(theta));
-  //y = (-x * sin(theta)) + (y * cos(theta));
-	ROS_INFO("Pose-> x: [%f], y: [%f], theta: [%f]", x, y, theta);
-}
 
 void amclCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
-  ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", msg->pose.pose.position.x,msg->pose.pose.position.y, msg->pose.pose.position.z);
+  //ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", msg->pose.pose.position.x,msg->pose.pose.position.y, msg->pose.pose.position.z);
 
-  x = msg->pose.pose.position.x;
-	y = msg->pose.pose.position.y;
+  x_mess = msg->pose.pose.position.x;
+	y_mess = msg->pose.pose.position.y;
 
-	theta = tf::getYaw(msg->pose.pose.orientation);
+	theta_mess = tf::getYaw(msg->pose.pose.orientation);
 
-  if(!start_set) {
-    start_set = true;
-    x_start = x;
-    y_start = y;
-    theta_start = theta;
+  if(start_counter < 5) {
+    x_start = x_mess;
+    y_start = y_mess;
+    theta_start = theta_mess;
+    ++start_counter;
   }
+  theta = theta_mess - theta_start;
+  //if(theta < -M_PI / 2)
+  //  theta += M_PI * 2;
+  tf::Transform transform;
+  transform.setOrigin(tf::Vector3(x_mess - x_start, y_mess - y_start, 0.0));
+  transform.setRotation(tf::Quaternion(tf::Vector3(0,0,1), -theta_start));
+  x = transform.getOrigin().getX();
+  y = transform.getOrigin().getY();
+  
+  //x = cos(-theta_start) * (x_mess - x_start) + sin(-theta_start) * (y_mess - y_start);
+  //y = -sin(-theta_start) * (x_mess - x_start) + cos(-theta_start) * (y_mess - y_start);
+
+  //x = x_mess - x_start;
+  //y = y_mess - y_start;
+
+  ROS_INFO("Position-> x: [%f], y: [%f], theta: [%f]", x,y, theta);
 }
+
 
 
 int main(int argc, char **argv)
 {
-  /* #####################
-   *  Prediction of robot
-   * #################### */
   double leftspeed, rightspeed, v_diff;
-  double dx = 0.0, dy = 0.0, dbeta;
   double scale_factor;
-  double elapsed_time = 0.01; // 10 ms
-  double epsilon = 0.01;
 
 
   double u, omega;
@@ -138,19 +85,16 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "robot_control");
 	ros::NodeHandle n;
 
-	ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
 	ros::Publisher vels_pub = n.advertise<volksbot::vels>("Vel", 100);
-	//ros::Publisher vels_pub = n.advertise<volksbot::vels>("Vel", 100);
-	//ros::Subscriber sub = n.subscribe("odom", 10, chatterCallback2);
 	ros::Subscriber sub = n.subscribe("amcl_pose", 1000, amclCallback);
 
-	ros::Time current_time;
+  ros::Duration(5.0).sleep();
 
   ros::Rate loop_rate(5);
 
   
   CGioController *gio_control = new CGioController(); // object and also init function
-  if (!gio_control->getPathFromFile("amcl_modified.dat"))
+  if (!gio_control->getPathFromFile("path.dat"))
     cout<<"ERROR: Can not open GioPath File\n";
   else
     drive_a_path = 1;
@@ -159,23 +103,53 @@ int main(int argc, char **argv)
   gio_control->setAxisLength(0.485);
 
   // debugging
-  giofile.open("pos_acht5.dat");
+  giofile.open("pos_amcl3.dat");
 
   int count = 0;
 
+  tf::TransformListener listener;
+
   //loop
   while  (drive_a_path && ros::ok()) {
+    /*
+    tf::StampedTransform transform;
+    try{
+      listener.lookupTransform("/map", "/base_link",
+                               ros::Time(0), transform);
+    }
+    catch (tf::TransformException &ex) {
+      ROS_ERROR("%s",ex.what());
+      ros::Duration(1.0).sleep();
+      continue;
+    }
+
+    x_mess = transform.getOrigin().x();
+    y_mess = transform.getOrigin().y();
+
+    theta_mess = tf::getYaw(transform.getRotation());
+
+    if(count < 10) {
+      x_start = x_mess;
+      y_start = y_mess;
+
+      theta_start = theta_mess;
+    }
+
+    //x = transform.getOrigin().x() - x_start;
+    //y = transform.getOrigin().y() - y_start;
+
+    theta = theta_mess - theta_start;
+
+    x = cos(-theta_start) * (x_mess - x_start) + sin(-theta_start) * (y_mess - y_start);
+    y = -sin(-theta_start) * (x_mess - x_start) + cos(-theta_start) * (y_mess - y_start);
+    */
     //    gio_control->setPose(x * 0.001, y_from_encoder*0.001,theta_from_encoder);
-    gio_control->setPose(x - x_start, y - y_start, theta - theta_start);
+    gio_control->setPose(x, y, theta);
     // get trajectory
     if (gio_control->getNextState(gio_u, gio_omega, leftspeed, rightspeed, 0)==0) {
 	     cout<<"finish";
 	     drive_a_path = 0;
     }
-    
-    // v_diff = gio_omega * gio_u / M_PI;
-    //leftspeed = (float) (gio_u + gio_omega * (280.0 / 1000.0) * 0.5); // - fabs(v_diff) - v_diff); 
-    //rightspeed = (float) (gio_u - gio_omega * (280.0 / 1000.0) * 0.5); // fabs(v_diff) + v_diff); 
 
     scale_factor = 1.0;
     if (fabs(leftspeed) > u_max) scale_factor = fabs(u_max / leftspeed);
@@ -183,36 +157,19 @@ int main(int argc, char **argv)
     leftspeed *= scale_factor;
     rightspeed *= scale_factor;
 
-
-    
-    // SET SPEED HERE =====================================
-    /*
-    set_wheel_speed2(v_l_soll, v_r_soll,
-				 v_l_ist, v_r_ist,
-				 omega, Get_mtime_diff(9), AntiWindup);
-    */
-    
-    /* ######################################
-	*  Implementation of the robot simulator
-	* ###################################### */
-    //PredictRobotBehaviour(leftspeed, rightspeed, theta, elapsed_time, &dbeta, &dx, &dy);  
-    //x += dx;
-    //y += dy;
-    //theta += dbeta;
-    //gio_control->getRoboterPose(leftspeed, rightspeed, x, y, theta);
+    if(leftspeed < 0)
+      leftspeed = 0;
+    if(rightspeed < 0) 
+      rightspeed = 0;
   
     giofile << gio_u << " " << gio_omega << " "
 		  << x << " " << y << " " << theta << " "
 		  << leftspeed << " " << rightspeed << endl;
-    /*
-    cout    << gio_u << " " << gio_omega << " "
-		  << x << " " << y << " " << theta << " "
-		  << leftspeed << " " << rightspeed << endl;
-    */
+
     cout.flush();
     giofile.flush();
 		
-		double motor_scale = -30;
+		double motor_scale = -10;
 
 		volksbot::vels velocity;
 		velocity.left = leftspeed * motor_scale;

@@ -9,7 +9,7 @@
 
 using namespace std;
 
-double map_scale = 0.5;
+//double map_scale = 1;
 
 class CCurve{
 protected:
@@ -105,8 +105,8 @@ public:
 	    if(!isnan(tx[i]) && !isnan(ty[i])) {
 	      //	        tx[i] *= 0.01;
 	      //yx	        ty[i] *= 0.01; 
-		tx[i] *= map_scale;
-		ty[i] *= map_scale;
+		//tx[i] *= map_scale;
+		//ty[i] *= map_scale;
 		i++;
 	    }else {
 		break;
